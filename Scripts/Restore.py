@@ -3,7 +3,7 @@ import sys
 import argparse
 import os
 
-def replace_file_signature(input_file, output_file=None):
+def replace_file_signature(input_file, output_file=None, signature=None):
     if not os.path.exists(input_file):
         print(f"Error: Input file '{input_file}' does not exist.")
         return False
@@ -21,7 +21,6 @@ def replace_file_signature(input_file, output_file=None):
             except Exception as e:
                 print(f"Warning: Could not create backup: {e}")
 
-    original_signature = b'\x4D\x5A\x90\x00'  # (PE Magic header)
     new_signature = b'\x4D\x44\x4D\x50'      # MDMP
 
     try:
@@ -31,7 +30,7 @@ def replace_file_signature(input_file, output_file=None):
             print(f"Error: File is too small (only {len(data)} bytes).")
             return False
 
-        if data[:4] != original_signature:
+        if data[:4] != signature:
             print(f"Warning: Original signature not found. Current first 4 bytes: {data[:4].hex(' ')}")
             response = input("Do you want to replace anyway? (y/N): ").lower().strip()
             if response != 'y':
@@ -53,19 +52,12 @@ def replace_file_signature(input_file, output_file=None):
         return False
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Restore MiniDump Signature"
-    )
-    parser.add_argument(
-        'input_file',
-        help="Path to the input binary file"
-    )
-    parser.add_argument(
-        'output_file',
-        help="Output file path (default: overwrite input file with backup)"
-    )
+    parser = argparse.ArgumentParser(description="Restore MiniDump Signature")
+    parser.add_argument('input_file', help="Path to the input binary file")
+    parser.add_argument('output_file', help="Output file path (default: overwrite input file with backup)")
+    parser.add_argument('signature', help="Path to the input binary file")
     args = parser.parse_args()
-    success = replace_file_signature(args.input_file, args.output_file)
+    success = replace_file_signature(args.input_file, args.output_file, args.signature.encode('utf-8'))
     return 0 if success else 1
 
 if __name__ == "__main__":

